@@ -1,0 +1,4 @@
+# one process name per line, lowercase recommended
+# example:
+explorer.exe
+svchost.exe

@@ -1,0 +1,404 @@
+# LandMine Detection Rules (Sigma-lite)
+#
+# Semantik:
+#   - Semua kondisi yang diisi dalam satu rule harus terpenuhi (AND).
+#   - Di dalam list berlaku OR, KECUALI `command_line_contains` (semua substring harus ada).
+#     Gunakan `command_line_contains_any` untuk logika OR pada command line.
+#   - Perbandingan dilakukan secara case-insensitive.
+#   - `path_contains` menggunakan path Windows; gunakan string literal TOML ('...')
+#     agar backslash tidak perlu di-escape.
+#   - Severity yang didukung: Low | Medium | High | Critical
+#   - Setiap rule yang cocok akan menambahkan flag `rule:<id>` pada event telemetri.
+
+# ==============================================================================
+# 1. INITIAL ACCESS & SUSPICIOUS EXECUTION LINEAGE
+# ==============================================================================
+
+[[rules]]
+id = "office_spawning_shell"
+name = "Microsoft Office Spawning Shell"
+severity = "Critical"
+tags = ["mitre.t1059", "mitre.t1204"]
+[rules.conditions]
+parent_name = ["winword.exe", "excel.exe", "powerpnt.exe", "outlook.exe"]
+process_name = ["cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe"]
+
+[[rules]]
+id = "spoolsv_spawning_shell"
+name = "Print Spooler Spawning Command Shell (PrintNightmare Indicator)"
+severity = "Critical"
+tags = ["mitre.t1068", "mitre.t1547.012"]
+[rules.conditions]
+parent_name = ["spoolsv.exe"]
+process_name = ["cmd.exe", "powershell.exe", "pwsh.exe", "rundll32.exe"]
+
+[[rules]]
+id = "webserver_spawning_shell"
+name = "Web Server Spawning Command Shell (WebShell Indicator)"
+severity = "Critical"
+tags = ["mitre.t1505.003", "mitre.t1059"]
+[rules.conditions]
+parent_name = ["w3wp.exe", "httpd.exe", "nginx.exe", "tomcat.exe", "tomcat8.exe", "tomcat9.exe"]
+process_name = ["cmd.exe", "powershell.exe", "pwsh.exe", "whoami.exe"]
+
+[[rules]]
+id = "database_spawning_shell"
+name = "Database Server Spawning Command Shell (xp_cmdshell / RCE Indicator)"
+severity = "Critical"
+tags = ["mitre.t1059", "mitre.t1190"]
+[rules.conditions]
+parent_name = ["sqlservr.exe", "mysqld.exe", "postgres.exe", "oracle.exe"]
+process_name = ["cmd.exe", "powershell.exe", "pwsh.exe"]
+
+[[rules]]
+id = "java_spawning_shell"
+name = "Java Runtime Spawning Command Shell (Log4Shell / RCE Indicator)"
+severity = "Critical"
+tags = ["mitre.t1190", "mitre.t1059"]
+[rules.conditions]
+parent_name = ["java.exe", "javaw.exe"]
+process_name = ["cmd.exe", "powershell.exe", "pwsh.exe", "bash.exe"]
+
+[[rules]]
+id = "pdf_spawning_script_engine"
+name = "PDF Reader Spawning Script Engine or Shell"
+severity = "High"
+tags = ["mitre.t1059", "mitre.t1204"]
+[rules.conditions]
+parent_name = ["acrord32.exe", "acrobat.exe", "foxitreader.exe"]
+process_name = ["cmd.exe", "powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe"]
+
+# ==============================================================================
+# 2. LOLBIN SCRIPT & PROXY EXECUTION
+# ==============================================================================
+
+[[rules]]
+id = "mshta_remote_script"
+name = "Mshta Executing Remote or Inline Script"
+severity = "High"
+tags = ["mitre.t1218.005"]
+[rules.conditions]
+process_name = ["mshta.exe"]
+command_line_contains_any = ["http://", "https://", "vbscript:", "javascript:"]
+
+[[rules]]
+id = "regsvr32_squiblydoo"
+name = "Regsvr32 Scriptlet Execution (Squiblydoo)"
+severity = "High"
+tags = ["mitre.t1218.010"]
+[rules.conditions]
+process_name = ["regsvr32.exe"]
+command_line_contains_any = ["scrobj.dll", "/i:http://", "/i:https://"]
+
+[[rules]]
+id = "rundll32_suspicious_script"
+name = "Rundll32 Executing Inline Script or Protocol Handler"
+severity = "High"
+tags = ["mitre.t1218.011"]
+[rules.conditions]
+process_name = ["rundll32.exe"]
+command_line_contains_any = ["javascript:", "vbscript:", "url.dll,fileprotocolhandler"]
+
+[[rules]]
+id = "wmic_process_create"
+name = "WMIC Spawning Process via CommandLine"
+severity = "High"
+tags = ["mitre.t1047"]
+[rules.conditions]
+process_name = ["wmic.exe"]
+command_line_contains = ["process", "call", "create"]
+
+[[rules]]
+id = "pcalua_process_launch"
+name = "Program Compatibility Assistant (pcalua) Launching Process"
+severity = "High"
+tags = ["mitre.t1218"]
+[rules.conditions]
+process_name = ["pcalua.exe"]
+command_line_contains = ["-a"]
+
+[[rules]]
+id = "cmstp_inf_execution"
+name = "CMSTP Executing INF Scriptlet"
+severity = "High"
+tags = ["mitre.t1218.003"]
+[rules.conditions]
+process_name = ["cmstp.exe"]
+command_line_contains_any = ["/s", "/au", "/ni"]
+
+[[rules]]
+id = "cscript_wscript_exec_from_temp"
+name = "Windows Script Host Executing from Temp Directory"
+severity = "High"
+tags = ["mitre.t1059.005"]
+[rules.conditions]
+process_name = ["cscript.exe", "wscript.exe"]
+path_contains = ['\appdata\local\temp\', '\windows\temp\']
+
+# ==============================================================================
+# 3. DEFENSE EVASION, ANTI-FORENSICS & INGRESS TOOLS
+# ==============================================================================
+
+[[rules]]
+id = "lolbin_certutil_download"
+name = "Certutil Download Cradle"
+severity = "High"
+tags = ["mitre.t1105"]
+[rules.conditions]
+process_name = ["certutil.exe"]
+command_line_contains = ["-urlcache", "-split"]
+
+[[rules]]
+id = "certutil_encode_decode"
+name = "Certutil Base64 Payload Decoding / Encoding"
+severity = "Medium"
+tags = ["mitre.t1140"]
+[rules.conditions]
+process_name = ["certutil.exe"]
+command_line_contains_any = ["-decode", "-encode"]
+
+[[rules]]
+id = "wevtutil_log_clearing"
+name = "Windows Event Log Cleared via Wevtutil"
+severity = "High"
+tags = ["mitre.t1070.001"]
+[rules.conditions]
+process_name = ["wevtutil.exe"]
+command_line_contains_any = [" cl ", " clear-log "]
+
+[[rules]]
+id = "vssadmin_delete_shadows"
+name = "Volume Shadow Copies Deletion via Vssadmin (Ransomware Tactic)"
+severity = "Critical"
+tags = ["mitre.t1490"]
+[rules.conditions]
+process_name = ["vssadmin.exe"]
+command_line_contains = ["delete", "shadows"]
+
+[[rules]]
+id = "wmic_delete_shadows"
+name = "Volume Shadow Copies Deletion via WMIC (Ransomware Tactic)"
+severity = "Critical"
+tags = ["mitre.t1490"]
+[rules.conditions]
+process_name = ["wmic.exe"]
+command_line_contains = ["shadowcopy", "delete"]
+
+[[rules]]
+id = "bcdedit_disable_recovery"
+name = "Boot Configuration Tampering / Disabling Recovery"
+severity = "High"
+tags = ["mitre.t1490"]
+[rules.conditions]
+process_name = ["bcdedit.exe"]
+command_line_contains_any = ["recoveryenabled no", "ignoreallfailures"]
+
+[[rules]]
+id = "defender_disable_realtime"
+name = "Disabling Windows Defender Realtime Monitoring via PowerShell"
+severity = "Critical"
+tags = ["mitre.t1562.001"]
+[rules.conditions]
+process_name = ["powershell.exe", "pwsh.exe"]
+command_line_contains = ["set-mppreference", "disablerealtimemonitoring"]
+
+[[rules]]
+id = "netsh_disable_firewall"
+name = "Disabling Windows Firewall via Netsh"
+severity = "High"
+tags = ["mitre.t1562.004"]
+[rules.conditions]
+process_name = ["netsh.exe"]
+command_line_contains = ["advfirewall", "off"]
+
+[[rules]]
+id = "bitsadmin_download"
+name = "BITSAdmin Background File Download"
+severity = "Medium"
+tags = ["mitre.t1197"]
+[rules.conditions]
+process_name = ["bitsadmin.exe"]
+command_line_contains_any = ["/transfer", "/addfile"]
+
+[[rules]]
+id = "installutil_uninstall_bypass"
+name = "InstallUtil Proxy Execution via /u Flag"
+severity = "High"
+tags = ["mitre.t1218.004"]
+[rules.conditions]
+process_name = ["installutil.exe"]
+command_line_contains_any = ["/u", "/logfile="]
+
+[[rules]]
+id = "msbuild_suspicious_build"
+name = "MSBuild Inline Execution from Suspicious Directory"
+severity = "High"
+tags = ["mitre.t1127.001"]
+[rules.conditions]
+process_name = ["msbuild.exe"]
+path_contains = ['\users\public\', '\appdata\local\temp\']
+
+[[rules]]
+id = "lolbin_from_public_profile"
+name = "Executable Launched from Public User Profile"
+severity = "Medium"
+tags = ["mitre.t1036"]
+[rules.conditions]
+path_contains = ['\users\public\']
+
+[[rules]]
+id = "lolbin_from_perflogs"
+name = "Executable Launched from Windows PerfLogs Directory"
+severity = "High"
+tags = ["mitre.t1036"]
+[rules.conditions]
+path_contains = ['\perflogs\']
+
+# ==============================================================================
+# 4. CREDENTIAL ACCESS & DUMPING
+# ==============================================================================
+
+[[rules]]
+id = "lsass_dump_procdump"
+name = "LSASS Memory Dump via Sysinternals ProcDump"
+severity = "Critical"
+tags = ["mitre.t1003.001"]
+[rules.conditions]
+process_name = ["procdump.exe", "procdump64.exe"]
+command_line_contains = ["-ma", "lsass"]
+
+[[rules]]
+id = "lsass_dump_comsvcs"
+name = "LSASS MiniDump via Rundll32 and comsvcs.dll"
+severity = "Critical"
+tags = ["mitre.t1003.001"]
+[rules.conditions]
+process_name = ["rundll32.exe"]
+command_line_contains = ["comsvcs.dll"]
+command_line_contains_any = ["minidump", "#24"]
+
+[[rules]]
+id = "reg_dump_sam_system"
+name = "Registry Hive Dumping (SAM / SYSTEM / SECURITY)"
+severity = "Critical"
+tags = ["mitre.t1003.002"]
+[rules.conditions]
+process_name = ["reg.exe"]
+command_line_contains = ["save"]
+command_line_contains_any = ["hklm\\sam", "hklm\\system", "hklm\\security"]
+
+[[rules]]
+id = "ntdsutil_dump"
+name = "Active Directory Database Extraction via Ntdsutil"
+severity = "Critical"
+tags = ["mitre.t1003.003"]
+[rules.conditions]
+process_name = ["ntdsutil.exe"]
+command_line_contains_any = ["ac i ntds", "ifm", "create full"]
+
+[[rules]]
+id = "cmdkey_credential_recon"
+name = "Listing Stored Windows Credentials via Cmdkey"
+severity = "Low"
+tags = ["mitre.t1003"]
+[rules.conditions]
+process_name = ["cmdkey.exe"]
+command_line_contains = ["/list"]
+
+# ==============================================================================
+# 5. PERSISTENCE & PRIVILEGE ESCALATION
+# ==============================================================================
+
+[[rules]]
+id = "schtasks_create_persistence"
+name = "Scheduled Task Creation with Elevated / Logon Trigger"
+severity = "High"
+tags = ["mitre.t1053.005"]
+[rules.conditions]
+process_name = ["schtasks.exe"]
+command_line_contains = ["/create"]
+command_line_contains_any = ["/sc onlogon", "/sc onstart", "/ru system"]
+
+[[rules]]
+id = "sc_service_create"
+name = "Windows Service Creation via SC.exe"
+severity = "High"
+tags = ["mitre.t1543.003"]
+[rules.conditions]
+process_name = ["sc.exe"]
+command_line_contains_any = ["create", "binpath="]
+
+[[rules]]
+id = "reg_run_key_persistence"
+name = "Registry Run / RunOnce Auto-start Key Modification"
+severity = "High"
+tags = ["mitre.t1547.001"]
+[rules.conditions]
+process_name = ["reg.exe"]
+command_line_contains = ["add"]
+command_line_contains_any = ["\\currentversion\\run", "\\currentversion\\runonce"]
+
+[[rules]]
+id = "wmiprvse_spawning_shell"
+name = "WMI Provider Host Spawning Shell (WMI Persistence / Lateral Movement)"
+severity = "High"
+tags = ["mitre.t1047"]
+[rules.conditions]
+parent_name = ["wmiprvse.exe"]
+process_name = ["cmd.exe", "powershell.exe", "pwsh.exe", "cscript.exe", "wscript.exe"]
+
+# ==============================================================================
+# 6. DISCOVERY & LATERAL MOVEMENT
+# ==============================================================================
+
+[[rules]]
+id = "ad_recon_nltest"
+name = "Active Directory Domain Trust / Domain Controller Reconnaissance"
+severity = "Medium"
+tags = ["mitre.t1018", "mitre.t1482"]
+[rules.conditions]
+process_name = ["nltest.exe"]
+command_line_contains_any = ["/dclist:", "/domain_trusts", "/all_trusts"]
+
+[[rules]]
+id = "ad_recon_domain_admins"
+name = "Active Directory Domain Admins Group Enumeration"
+severity = "Medium"
+tags = ["mitre.t1087.002"]
+[rules.conditions]
+process_name = ["net.exe", "net1.exe"]
+command_line_contains = ["group", "domain admins"]
+
+[[rules]]
+id = "local_admin_recon"
+name = "Local Administrators Group Enumeration"
+severity = "Low"
+tags = ["mitre.t1087.001"]
+[rules.conditions]
+process_name = ["net.exe", "net1.exe"]
+command_line_contains = ["localgroup", "administrators"]
+
+[[rules]]
+id = "sharphound_bloodhound_discovery"
+name = "BloodHound / SharpHound Active Directory Collector Execution"
+severity = "High"
+tags = ["mitre.t1087", "mitre.t1069"]
+[rules.conditions]
+process_name = ["sharphound.exe"]
+
+[[rules]]
+id = "psexec_service_spawn"
+name = "PsExec Remote Execution Service Spawn"
+severity = "High"
+tags = ["mitre.t1021.002"]
+[rules.conditions]
+process_name = ["psexec.exe", "psexesvc.exe"]
+
+[[rules]]
+id = "winrs_remote_execution"
+name = "WinRM Remote Command Shell Execution via WinRS"
+severity = "High"
+tags = ["mitre.t1021.006"]
+[rules.conditions]
+process_name = ["winrs.exe"]
+command_line_contains = ["-r:"]
